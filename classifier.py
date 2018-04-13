@@ -67,21 +67,26 @@ model = Net()
 model.cuda()
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-subs_train = ['F001', 'F002']
-subs_test = ['F010']
-poses = [1]
+subs_train = ['F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
+              'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020',
+              'F021', 'F022', 'F023', 'M001', 'M002', 'M003', 'M004']
+subs_test = ['F007', 'F009', 'F010', 'F011', 'M001', 'M002', 'M003', 'M004',
+             'M005', 'M006', 'rF001', 'rF002']
+poses = [1, 6, 7]
 
 dt_train = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                           partition='train', tsubs=subs_train, tposes=[poses])
-dl_train = DataLoader(dt_train, batch_size=args.batch_size,
-                      shuffle=True, num_workers=4)
+                           partition='train', tsubs=['F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
+                                                     'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020'], tposes=[1, 6, 7])
+dl_train = DataLoader(dt_train, batch_size=64, shuffle=True, num_workers=4)
 
 dl_test = []
 for pose in poses:
-    dt_test_pose = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                                   partition='validation', tsubs=subs_test, tposes=[pose])
-    dl_test.append(DataLoader(dt_test_pose, batch_size=args.batch_size,
+    dt_test = Fera2017Dataset('/data/data1/datasets/fera2017/',
+                              partition='train', tsubs=['F021', 'F022', 'F023', 'M001'],  tposes=[pose])
+    dl_test.append(DataLoader(dt_test, batch_size=64,
                               shuffle=True, num_workers=4))
+
+print(dl_test)
 
 n_iter = len(dt_train)/args.batch_size
 
@@ -95,7 +100,7 @@ def train(epoch):
 
         optimizer.zero_grad()
         output = model(data)
-        loss = F.mse_loss(output, target)
+        loss = F.binary_cross_entropy(output, target)
         loss.backward()
         optimizer.step()
 
@@ -106,16 +111,22 @@ def train(epoch):
 
 def test():
     model.eval()
-    for dt_test_pose in dl_test:
-        for iter, (data, target, _) in enumerate(dt_test_pose):
+    targets, preds = [], []
+    for i, dl_test_pose in enumerate(dl_test):
+        print(
+            '-----------------------------------Evaluating POSE {} ------------------------- '.format(poses[i]))
+        for iter, (data, target, _) in enumerate(dl_test_pose):
             data, target = data.cuda(), target.cuda()
             data, target = Variable(data).float(), Variable(target).float()
 
-            output = model(data)
-            pred = np.asarray(
-                np.clip(np.rint(np.concatenate(output.data)), 0, 1), dtype=np.uint8)
+            preds.append(model(data).data.cpu().numpy())
+            targets.append(target.data.cpu().numpy())
 
-            evaluate_model(target, pred)
+        pred = np.asarray(
+            np.clip(np.rint(np.concatenate(preds)), 0, 1), dtype=np.uint8)
+        target = np.concatenate(targets)
+
+        evaluate_model(target, pred)
 
 
 for epoch in range(1, args.epochs+1):
