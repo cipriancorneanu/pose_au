@@ -1,8 +1,8 @@
 __author__ = 'cipriancorneanu'
 
-import sys
 import random
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, hamming_loss
+import numpy as np
 
 
 def evaluate_model(y_true, y_pred, verbose=True):

@@ -47,10 +47,10 @@ class Fera2017Dataset(Dataset):
                     ''' Add entry to dictionary and update offset'''
                     idx_map[self.partition_key + '/' + sub + '/' + task + '/' +
                             str(pose)] = np.arange(offset, offset+n)
-
+                    '''
                     print('{}: ({}, {}), {}'.format(
                         sub+'/'+task+'/'+str(pose), offset, offset+n, n))
-
+                    '''
                     offset = offset + n
 
         return idx_map
@@ -60,28 +60,41 @@ class Fera2017Dataset(Dataset):
 
     def __getitem__(self, idx):
         ''' Write batch sampling code here'''
-
         for k, v in self.idxmap.iteritems():
             if idx >= v.min() and idx <= v.max():
                 key, i = k, idx-v.min()
 
-        with h5py.File(self.root_dir+'fera_new.h5', 'r') as hf:
-            x = hf[key]['faces'][i]
+        path = self.root_dir + \
+            'fera_train.h5' if self.partition == 'train' else self.root_dir+'fera_test.h5'
+
+        with h5py.File(path, 'r') as hf:
+            x = np.expand_dims(hf[key]['faces'][i], axis=0)
             y = hf[key]['aus'][i]
 
         return (x, y, key)
 
 
 if __name__ == '__main__':
-    dt = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                         partition='train', tsubs=['M001', 'F005'], tposes=[5, 6, 7])
 
-    print dt.__len__()
-    for i in range(0, len(dt), 100):
-        (x, y, seq) = dt[i]
-        print('{}:{}, {}, {}'.format(i, x.shape, y, seq))
+    dt_tr = Fera2017Dataset('/data/data1/datasets/fera2017/',
+                            partition='train', tsubs=['F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
+                                                      'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020'], tposes=[1, 6, 7])
 
-    dataloader = DataLoader(dt, batch_size=64, shuffle=True, num_workers=4)
+    dt_val = Fera2017Dataset('/data/data1/datasets/fera2017/',
+                             partition='train', tsubs=['F021', 'F022', 'F023', 'M001'],  tposes=[1, 6, 7])
 
-    for i_batch, (x, y, seq) in enumerate(dataloader):
-        print('{}:{}, {}, {}'.format(i, x.shape, y, seq))
+    dl_tr = DataLoader(dt_tr, batch_size=64, shuffle=True, num_workers=4)
+    dl_val = DataLoader(dt_val, batch_size=64, shuffle=True, num_workers=4)
+
+    import scipy.misc
+
+    print(dt_tr.__len__())
+    for i in range(0, len(dt_tr), 10000):
+        x, y, seq = dt_tr[i]
+        x = x.squeeze()
+        print(x.min())
+        print(x.max())
+
+        print('{}: {}'.format(i, y))
+
+        scipy.misc.toimage(x, 0, 255).save(str(i)+'.jpg')
