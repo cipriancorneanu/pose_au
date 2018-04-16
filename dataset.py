@@ -25,9 +25,9 @@ class Fera2017Dataset(Dataset):
         all_subjects = all_subjects_train if partition == 'train' else all_subjects_validation
         self.subjects = tsubs if tsubs else all_subjects
         self.poses = tposes if tposes else self.n_poses
-        self.idxmap = self.get_idx_map()
+        self.idxmap = self.get_idxmap_from_h5py()
 
-    def get_idx_map(self):
+    def get_idxmap_from_csv(self):
         ''' Map 'subject/task/pose' to index _list'''
         idx_map = {}
         offset = 0
@@ -47,12 +47,37 @@ class Fera2017Dataset(Dataset):
                     ''' Add entry to dictionary and update offset'''
                     idx_map[self.partition_key + '/' + sub + '/' + task + '/' +
                             str(pose)] = np.arange(offset, offset+n)
-                    '''
+
                     print('{}: ({}, {}), {}'.format(
                         sub+'/'+task+'/'+str(pose), offset, offset+n, n))
-                    '''
+
                     offset = offset + n
 
+        return idx_map
+
+    def get_idxmap_from_h5py(self):
+        idx_map = {}
+        offset = 0
+
+        path = self.root_dir + \
+            'fera_train.h5' if self.partition == 'train' else self.root_dir+'fera_test_.h5'
+
+        with h5py.File(path, 'r') as hf:
+            '''for sub in hf[self.partition_key].keys():'''
+            for sub in self.subjects:
+                for task in hf[self.partition_key+'/'+sub].keys():
+                    '''for pose in hf[self.partition_key+'/'+sub+'/'+task].keys():'''
+                    for pose in self.poses:
+                        key = self.partition_key+'/'+sub+'/'+task+'/'+str(pose)
+                        n = hf[key]['faces'].shape[0]
+                        '''y = hf[key]['aus'][i]'''
+
+                        idx_map[key] = np.arange(offset, offset+n)
+
+                        print('{}: ({}, {}), {}'.format(
+                            sub+'/'+task+'/'+str(pose), offset, offset+n, n))
+
+                        offset = offset + n
         return idx_map
 
     def __len__(self):
@@ -68,6 +93,7 @@ class Fera2017Dataset(Dataset):
             'fera_train.h5' if self.partition == 'train' else self.root_dir+'fera_test.h5'
 
         with h5py.File(path, 'r') as hf:
+            print(hf[key]['faces'].shape)
             x = np.expand_dims(hf[key]['faces'][i], axis=0)
             y = hf[key]['aus'][i]
 
@@ -75,20 +101,24 @@ class Fera2017Dataset(Dataset):
 
 
 if __name__ == '__main__':
+    subjects_train = ['F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
+                      'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020']
+    subjects_validation = ['F021', 'F022', 'F023', 'M001']
 
     dt_tr = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                            partition='train', tsubs=['F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
-                                                      'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020'], tposes=[1, 6, 7])
+                            partition='train', tsubs=subjects_train, tposes=[1, 6, 7])
 
     dt_val = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                             partition='train', tsubs=['F021', 'F022', 'F023', 'M001'],  tposes=[1, 6, 7])
+                             partition='train', tsubs=subjects_validation,  tposes=[1, 6, 7])
 
     dl_tr = DataLoader(dt_tr, batch_size=64, shuffle=True, num_workers=4)
     dl_val = DataLoader(dt_val, batch_size=64, shuffle=True, num_workers=4)
 
-    import scipy.misc
-
-    print(dt_tr.__len__())
+    '''
+    for x, y, seq in dl_tr:
+        print('{} {} {}'.format(x.shape, y.shape, seq))
+    '''
+    '''
     for i in range(0, len(dt_tr), 10000):
         x, y, seq = dt_tr[i]
         x = x.squeeze()
@@ -98,3 +128,4 @@ if __name__ == '__main__':
         print('{}: {}'.format(i, y))
 
         scipy.misc.toimage(x, 0, 255).save(str(i)+'.jpg')
+    '''
