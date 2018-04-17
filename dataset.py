@@ -13,6 +13,7 @@ class Fera2017Dataset(Dataset):
         self.n_poses = 9
         self.partition_key = 'TR' if partition == 'train' else 'VA'
 
+        '''
         all_subjects_train = ['F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
                               'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020',
                               'F021', 'F022', 'F023', 'M001', 'M002', 'M003', 'M004', 'M005', 'M006', 'M007',
@@ -21,10 +22,12 @@ class Fera2017Dataset(Dataset):
         all_subjects_validation = ['F007', 'F008', 'F009', 'F010', 'F011', 'M001', 'M002', 'M003', 'M004',
                                    'M005', 'M006', 'rF001', 'rF002', 'rM001', 'rM002', 'rM003', 'rM004',
                                    'rM005', 'rM006', 'rM007']
+        '''
 
-        all_subjects = all_subjects_train if partition == 'train' else all_subjects_validation
-        self.subjects = tsubs if tsubs else all_subjects
-        self.poses = tposes if tposes else self.n_poses
+        f = h5py.File(self.root_dir+'fera_train.h5',
+                      'r') if self.partition == 'train' else h5py.File(self.root_dir+'fera_test.h5', 'r')
+        self.subjects = tsubs if tsubs else f[self.partition_key].keys()
+        self.poses = tposes if tposes else range(self.n_poses)
         self.idxmap = self.get_idxmap_from_h5py()
         self.transform = transform
 
@@ -61,23 +64,19 @@ class Fera2017Dataset(Dataset):
         offset = 0
 
         path = self.root_dir + \
-            'fera_train.h5' if self.partition == 'train' else self.root_dir+'fera_test_.h5'
+            'fera_train.h5' if self.partition == 'train' else self.root_dir+'fera_test.h5'
 
         with h5py.File(path, 'r') as hf:
-            '''for sub in hf[self.partition_key].keys():'''
             for sub in self.subjects:
                 for task in hf[self.partition_key+'/'+sub].keys():
-                    '''for pose in hf[self.partition_key+'/'+sub+'/'+task].keys():'''
                     for pose in self.poses:
                         key = self.partition_key+'/'+sub+'/'+task+'/'+str(pose)
                         n = hf[key]['faces'].shape[0]
-                        '''y = hf[key]['aus'][i]'''
-
                         idx_map[key] = np.arange(offset, offset+n)
-                        '''
+
                         print('{}: ({}, {}), {}'.format(
                             sub+'/'+task+'/'+str(pose), offset, offset+n, n))
-                        '''
+
                         offset = offset + n
         return idx_map
 
@@ -123,18 +122,19 @@ if __name__ == '__main__':
 
     tsfm = ToTensor()
     dt_tr = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                            partition='train', tsubs=subjects_train, tposes=[1, 6, 7], transform=tsfm)
+                            partition='train', tsubs=None, tposes=[1, 6], transform=tsfm)
 
     dt_val = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                             partition='train', tsubs=subjects_validation,  tposes=[1, 6, 7], transform=tsfm)
+                             partition='validation', tsubs=None, tposes=[7], transform=tsfm)
 
     dl_tr = DataLoader(dt_tr, batch_size=64, shuffle=True, num_workers=4)
     dl_val = DataLoader(dt_val, batch_size=64, shuffle=True, num_workers=4)
 
+    '''
     for i, (x, y, seq) in enumerate(dl_tr):
         print('{}: {} {}, mean = {}'.format(
             i, x.shape, y.shape, torch.mean(x)))
-
+    '''
     '''
     for i in range(0, len(dt_tr), 10000):
         x, y, seq = dt_tr[i]
