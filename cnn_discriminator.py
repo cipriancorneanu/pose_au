@@ -38,13 +38,13 @@ prefix, oname = 'no_weighting_', os.path.basename(__file__).split('.')[0] + '_' 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=4, stride=2)
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=4, stride=2)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=4, stride=2)
         self.conv3 = nn.Conv2d(64, 128, kernel_size=4, stride=2)
         self.conv4 = nn.Conv2d(128, 256, kernel_size=4, stride=2)
         self.conv5 = nn.Conv2d(256, 256, kernel_size=4, stride=2)
         self.conv6 = nn.Conv2d(256, 512, kernel_size=4, stride=2)
-        self.fc1 = nn.Linear(256, 1024)
+        self.fc1 = nn.Linear(512, 1024)
         self.fc2 = nn.Linear(1024, 1024)
         self.fc3 = nn.Linear(1024, 10)
 
@@ -54,7 +54,9 @@ class Net(nn.Module):
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
         x = F.relu(self.conv5(x))
-        x = x.view(-1, 256)
+        x = F.relu(self.conv6(x))
+
+        x = x.view(-1, 512)
 
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -68,25 +70,20 @@ model.cuda()
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
 subs_train = ['F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
-              'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020',
-              'F021', 'F022', 'F023', 'M001', 'M002', 'M003', 'M004']
-subs_test = ['F007', 'F009', 'F010', 'F011', 'M001', 'M002', 'M003', 'M004',
-             'M005', 'M006', 'rF001', 'rF002']
+              'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020']
+subs_test = ['F021', 'F022', 'F023', 'M001']
 poses = [1, 6, 7]
 
 dt_train = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                           partition='train', tsubs=['F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
-                                                     'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020'], tposes=[1, 6, 7])
-dl_train = DataLoader(dt_train, batch_size=64, shuffle=True, num_workers=4)
+                           partition='train', tsubs=subs_train, tposes=[1, 6, 7])
+dl_train = DataLoader(dt_train, batch_size=64, shuffle=True, num_workers=2)
 
 dl_test = []
 for pose in poses:
     dt_test = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                              partition='train', tsubs=['F021', 'F022', 'F023', 'M001'],  tposes=[pose])
+                              partition='train', tsubs=subs_test,  tposes=[pose])
     dl_test.append(DataLoader(dt_test, batch_size=64,
-                              shuffle=True, num_workers=4))
-
-print(dl_test)
+                              shuffle=True, num_workers=2))
 
 n_iter = len(dt_train)/args.batch_size
 
