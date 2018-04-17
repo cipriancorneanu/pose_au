@@ -7,7 +7,7 @@ import h5py
 
 
 class Fera2017Dataset(Dataset):
-    def __init__(self, root_dir, partition='train', tsubs=None, tposes=None):
+    def __init__(self, root_dir, partition='train', tsubs=None, tposes=None, transform=None):
         self.root_dir = root_dir + '/'
         self.partition = partition
         self.n_poses = 9
@@ -26,6 +26,7 @@ class Fera2017Dataset(Dataset):
         self.subjects = tsubs if tsubs else all_subjects
         self.poses = tposes if tposes else self.n_poses
         self.idxmap = self.get_idxmap_from_h5py()
+        self.transform = transform
 
     def get_idxmap_from_csv(self):
         ''' Map 'subject/task/pose' to index _list'''
@@ -47,10 +48,10 @@ class Fera2017Dataset(Dataset):
                     ''' Add entry to dictionary and update offset'''
                     idx_map[self.partition_key + '/' + sub + '/' + task + '/' +
                             str(pose)] = np.arange(offset, offset+n)
-
+                    '''
                     print('{}: ({}, {}), {}'.format(
                         sub+'/'+task+'/'+str(pose), offset, offset+n, n))
-
+                    '''
                     offset = offset + n
 
         return idx_map
@@ -73,10 +74,10 @@ class Fera2017Dataset(Dataset):
                         '''y = hf[key]['aus'][i]'''
 
                         idx_map[key] = np.arange(offset, offset+n)
-
+                        '''
                         print('{}: ({}, {}), {}'.format(
                             sub+'/'+task+'/'+str(pose), offset, offset+n, n))
-
+                        '''
                         offset = offset + n
         return idx_map
 
@@ -93,11 +94,26 @@ class Fera2017Dataset(Dataset):
             'fera_train.h5' if self.partition == 'train' else self.root_dir+'fera_test.h5'
 
         with h5py.File(path, 'r') as hf:
-            print(hf[key]['faces'].shape)
-            x = np.expand_dims(hf[key]['faces'][i], axis=0)
+            x = hf[key]['faces'][i]
             y = hf[key]['aus'][i]
 
+        if self.transform:
+            (x, y) = self.transform((x, y))
+
         return (x, y, key)
+
+
+class ToTensor(object):
+    """Convert ndarrays in sample to Tensors."""
+
+    def __call__(self, sample):
+        im, aus = sample[0], sample[1]
+
+        # swap color axis because and range between 0 and 1
+        # numpy image: H x W x C
+        # torch image: C X H X W
+        im = im.transpose((2, 0, 1))/255.
+        return (torch.from_numpy(im),  torch.from_numpy(aus))
 
 
 if __name__ == '__main__':
@@ -105,19 +121,20 @@ if __name__ == '__main__':
                       'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020']
     subjects_validation = ['F021', 'F022', 'F023', 'M001']
 
+    tsfm = ToTensor()
     dt_tr = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                            partition='train', tsubs=subjects_train, tposes=[1, 6, 7])
+                            partition='train', tsubs=subjects_train, tposes=[1, 6, 7], transform=tsfm)
 
     dt_val = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                             partition='train', tsubs=subjects_validation,  tposes=[1, 6, 7])
+                             partition='train', tsubs=subjects_validation,  tposes=[1, 6, 7], transform=tsfm)
 
     dl_tr = DataLoader(dt_tr, batch_size=64, shuffle=True, num_workers=4)
     dl_val = DataLoader(dt_val, batch_size=64, shuffle=True, num_workers=4)
 
-    '''
-    for x, y, seq in dl_tr:
-        print('{} {} {}'.format(x.shape, y.shape, seq))
-    '''
+    for i, (x, y, seq) in enumerate(dl_tr):
+        print('{}: {} {}, mean = {}'.format(
+            i, x.shape, y.shape, torch.mean(x)))
+
     '''
     for i in range(0, len(dt_tr), 10000):
         x, y, seq = dt_tr[i]
