@@ -49,7 +49,7 @@ class VAE(nn.Module):
         self.conv5 = nn.Conv2d(256, 256, kernel_size=4, stride=2)
         self.conv6 = nn.Conv2d(256, 512, kernel_size=4, stride=2)
 
-        self.fc1 = nn.Linear(512, 200)
+        self.fc2 = nn.Linear(512, 200)
         self.fc21 = nn.Linear(200, args.size_latent)
         self.fc22 = nn.Linear(200, args.size_latent)
         self.fc3 = nn.Linear(args.size_latent, 200)
@@ -72,11 +72,10 @@ class VAE(nn.Module):
         x = F.relu(self.conv4(x))
         x = F.relu(self.conv5(x))
         x = F.relu(self.conv6(x))
-
         x = x.view(-1, 512)
 
-        h1 = self.relu(self.fc1(x))
-        return self.fc21(h1), self.fc22(h1)
+        x = self.relu(self.fc2(x))
+        return self.fc21(x), self.fc22(x)
 
     def reparameterize(self, mu, logvar):
         if self.training:
@@ -89,8 +88,8 @@ class VAE(nn.Module):
     def decode(self, x):
         x = self.relu(self.fc3(x))
         x = self.relu(self.fc4(x))
-
         x = x.view(-1, 512, 1, 1)
+
         x = F.relu(self.deconv6(x))
         x = F.relu(self.deconv5(x))
         x = F.relu(self.deconv4(x))
@@ -107,23 +106,27 @@ class VAE(nn.Module):
 
 
 model = VAE()
+print(model)
 model.cuda()
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
+'''
 subs_train = ['F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
-              'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020']
-subs_test = ['F021', 'F022', 'F023', 'M001']
+              'F011', 'F012', 'F013', 'F014', 'F015', 'F016', 'F017', 'F018', 'F019', 'F020',
+              'F021', 'F022', 'F023', 'M001', 'M002']
+subs_test = ['F007', 'F008']
+'''
 poses = [1, 6, 7]
 tsfm = ToTensor()
 
 dt_train = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                           partition='train', tsubs=subs_train, tposes=[1, 6, 7], transform=tsfm)
+                           partition='train', tsubs=None, tposes=[1, 6, 7], transform=tsfm)
 dl_train = DataLoader(dt_train, batch_size=64, shuffle=True, num_workers=4)
 
 dl_test, n_iter_test = [], []
 for pose in poses:
     dt_test = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                              partition='train', tsubs=subs_test,  tposes=[pose], transform=tsfm)
+                              partition='train', tsubs=None,  tposes=[pose], transform=tsfm)
     n_iter_test.append(len(dt_test)/args.batch_size)
     dl_test.append(DataLoader(dt_test, batch_size=64,
                               shuffle=True, num_workers=4))
@@ -148,6 +151,11 @@ def loss_function(recon_x, x, mu, logvar):
     return MSE + KLD
 
 
+def KLD(mu, logvar):
+    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    return KLD
+
+
 def train(epoch):
     model.train()
     train_loss = 0
@@ -157,15 +165,18 @@ def train(epoch):
 
         optimizer.zero_grad()
         recon_data, mu, logvar = model(data)
-        loss = loss_function(recon_data, data, mu, logvar)
+        mse = F.mse_loss(recon_data, data)
+        kld = KLD(mu, logvar)
+        '''loss = loss_function(recon_data, data, mu, logvar)'''
+        loss = mse + kld
 
         loss.backward()
         train_loss += loss.data[0]
         optimizer.step()
 
         if iter % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{}]\tLoss: {:.6f}'.format(
-                epoch, iter, n_iter_train, loss.data[0]))
+            print('Train Epoch: {} [{}/{}]\tLoss: {:.5f}+{:.5f}={:.5f}'.format(
+                epoch, iter, n_iter_train, mse.data[0], kld.data[0], loss.data[0]))
 
     print('====> Epoch: {} Average loss: {:.4f}'.format(
         epoch, train_loss / n_iter_train))
@@ -187,8 +198,9 @@ def test():
             if iter == 0:
                 n = min(data.size(0), 8)
                 comparison = torch.cat([data[:n], recon_data[:n]])
-                save_image(comparison.data.cpu(),
-                           'results/reconstruction_pose_' + str(i) + 'epoch_' + str(epoch) + '_lt_'+str(args.size_latent)+'.png', nrow=n)
+                save_image(comparison.data.cpu()/255.,
+                           'results/vae/reconstruction_pose_' + str(i) +
+                           '_epoch_' + str(epoch) + '_lt_'+str(args.size_latent)+'.png', nrow=n)
 
         test_loss /= n_iter_test[i]
         print('====> Test loss: {:.4f}'.format(test_loss))
