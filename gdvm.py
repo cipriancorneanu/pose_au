@@ -1,10 +1,17 @@
+'''
+Discriminative model with generative regularization.
+
+It implements the following paper: 
+Yeh, C. K., Tsai, Y. H. H., & Wang, Y. C. F. (2017). 
+Generative-Discriminative Variational Model for Visual Recognition. arXiv preprint arXiv:1706.02295.
+
+'''
+
 from __future__ import print_function
-import os
 import argparse
 import torch
 import torch.utils.data
 from torch import optim
-from torchvision.utils import save_image
 from dataset import Fera2017Dataset, ToTensor
 from torch.utils.data import DataLoader
 import numpy as np
@@ -12,9 +19,10 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 from eval import evaluate_model
 from topologies import GDVM
+from logger import Logger
+from utils import save_checkpoint
 
 parser = argparse.ArgumentParser(description='VAE.')
-
 parser.add_argument("--path", default='/data/data1/datasets/fera2017/',
                     help='input path for data')
 parser.add_argument("--batch_size", type=int, default=64,
@@ -37,13 +45,7 @@ parser.add_argument("--beta", type=float, default=1,
                     help='how much the KL weights in the final loss')
 parser.add_argument("--k_beta", type=float, default=1,
                     help='Adapt how much KL weights in the final loss every epoch : beta = beta + k_beta*beta')
-
 args = parser.parse_args()
-
-prefix, oname = 'no_weighting_', os.path.basename(__file__).split('.')[0] + '_' + \
-                str(args.n_folds) + 'folds_tf_' + \
-                str(args.test_fold) + '_' + args.patch
-
 
 model = GDVM()
 model.cuda()
@@ -51,15 +53,18 @@ optimizer = optim.Adam(model.parameters(), lr=args.lr)
 poses = [1, 6, 7]
 tsfm = ToTensor()
 
+logger = Logger('./logs/gdvm'+'_beta_'+str(args.beta) +
+                '_kbeta_'+str(args.k_beta))
+
 dt_train = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                           partition='train', tsubs=None, tposes=[1, 6, 7], transform=tsfm)
+                           partition='train', tsubs=['F001'], tposes=[1, 6, 7], transform=tsfm)
 dl_train = DataLoader(dt_train, batch_size=args.batch_size,
                       shuffle=True, num_workers=4)
 
 dl_test, n_iter_test = [], []
 for pose in poses:
     dt_test = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                              partition='validation', tsubs=None,  tposes=[pose], transform=tsfm)
+                              partition='validation', tsubs=['F007'],  tposes=[pose], transform=tsfm)
     n_iter_test.append(len(dt_test)/args.batch_size)
     dl_test.append(DataLoader(dt_test, batch_size=args.batch_size,
                               shuffle=True, num_workers=4))
@@ -101,12 +106,23 @@ def train(epoch, beta):
             print('Train Epoch: {} [{}/{}]\tLoss: {:.4f} + {}*{:.4f} = {:.4f}'.format(
                 epoch, iter, n_iter_train, bce.data[0] / len(data), beta, kld.data[0] / len(data), loss.data[0] / len(data)))
 
+            info = {
+                'loss_train': loss.data[0] / len(data),
+                'bce_train': bce.data[0] / len(data),
+                'kld_train': kld.data[0] / len(data)
+            }
+
+            for tag, value in info.items():
+                logger.scalar_summary(
+                    tag, value, n_iter_train*(epoch-1)+iter+1)
+
     print('====> Epoch: {} Average loss: {:.4f}'.format(
         epoch, acc_loss / n_iter_train))
 
 
-def test(n_runs, beta):
+def test(epoch, n_runs, beta):
     model.eval()
+    f1s = []
     for i, dl_test_pose in enumerate(dl_test):
         acc_loss, targets, preds = 0, [], []
         print(
@@ -120,7 +136,7 @@ def test(n_runs, beta):
 
             for (pred, mu, logvar) in outputs:
                 acc_loss += (BCE(pred, target) + beta *
-                             KLD(mu, logvar)).data[0] / (len(data)*n_runs)
+                             KLD(mu, logvar)).data[0] / (len(data)*n_runs*n_iter_test[i])
 
             pred = np.mean(np.asarray([p.data.cpu().numpy()
                                        for (p, mu, lvar) in outputs]), axis=0)
@@ -133,12 +149,42 @@ def test(n_runs, beta):
         target = np.clip(np.rint(np.concatenate(targets)),
                          0, 1).astype(np.uint8)
 
-        evaluate_model(target, pred)
+        ''' Evaluate model per pose'''
+        _, _, pose_f1, _, _ = evaluate_model(target, pred)
+        f1s.append(pose_f1)
 
-        print('====> Test loss: {:.4f}'.format(acc_loss / n_iter_test[i]))
+    acc_loss = acc_loss / len(dl_test)
+    f1 = np.mean(f1s)
+    print('\n====> Test loss: {:.4f}\n'.format(acc_loss))
+    print('\n====> Mean F1: {}\n'.format(f1))
+
+    #============ TensorBoard logging ============#
+    info = {
+        'loss_val': acc_loss,
+        'f1_val': f1
+    }
+
+    for tag, value in info.items():
+        logger.scalar_summary(tag, value, epoch)
+
+    # Get bool not ByteTensor
+    is_best = True
+    '''
+    is_best = bool(f1 > best_f1)
+
+    # Get greater Tensor to keep track best acc
+    best_f1 = max(f1, best_f1)
+    '''
+
+    # Save checkpoint if is a new best
+    save_checkpoint({
+        'epoch': epoch,
+        'state_dict': model.state_dict(),
+        'f1': f1
+    }, is_best, 'models/gdvm_epoch_'+str(epoch))
 
 
 for epoch in range(1, args.epochs+1):
     beta = args.beta*(1 + epoch*args.k_beta)
     train(epoch, beta=beta)
-    test(n_runs=5, beta=beta)
+    test(epoch, n_runs=5, beta=beta)
