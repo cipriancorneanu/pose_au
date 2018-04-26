@@ -4,3 +4,6 @@
 outputs/*
 results/*
 facepp/*
+data/*
+logs/*
+models/*
