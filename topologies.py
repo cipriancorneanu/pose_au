@@ -50,13 +50,14 @@ class BiggerNet(nn.Module):
         self.fc1 = nn.Linear(4096, 1024)
         self.fc2 = nn.Linear(1024, 512)
         self.fc3 = nn.Linear(512, 10)
-        self.dropout = nn.Dropout2d(0.5)
+        self.dropout = nn.Dropout2d(0.2)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
-        x = self.dropout(x)
         x = self.pool1(x)
+        x = self.dropout(x)
         x = self.bn1(x)
+
         x = F.relu(self.conv2(x))
         x = self.dropout(x)
         x = self.pool2(x)
@@ -85,37 +86,50 @@ class GDVM(nn.Module):
         self.conv1 = nn.Conv2d(3, 96, kernel_size=11, stride=1)
         self.pool1 = nn.MaxPool2d(3)
         self.bn1 = nn.BatchNorm2d(96)
+
         self.conv2 = nn.Conv2d(96, 256, kernel_size=5, stride=1)
         self.bn2 = nn.MaxPool2d(3)
         self.pool2 = nn.BatchNorm2d(256)
+
         self.conv3 = nn.Conv2d(256, 384, kernel_size=3, stride=1)
         self.conv4 = nn.Conv2d(384, 384, kernel_size=3, stride=1)
         self.conv5 = nn.Conv2d(384, 256, kernel_size=3, stride=1)
         self.pool5 = nn.MaxPool2d(4)
         self.conv6 = nn.Conv2d(512, 512, kernel_size=3, stride=1)
+
         self.fc1 = nn.Linear(4096, 1024)
         self.fc2 = nn.Linear(1024, 512)
         self.fc21 = nn.Linear(512, 64)
         self.fc22 = nn.Linear(512, 64)
         self.fc3 = nn.Linear(64, 512)
         self.fc4 = nn.Linear(512, 10)
+        self.dropout = nn.Dropout2d(0.2)
 
     def encode(self, x):
         x = F.relu(self.conv1(x))
         x = self.pool1(x)
         x = self.bn1(x)
+
         x = F.relu(self.conv2(x))
         x = self.pool2(x)
         x = self.bn2(x)
+
         x = F.relu(self.conv3(x))
+        x = self.dropout(x)
+
         x = F.relu(self.conv4(x))
+        x = self.dropout(x)
+
         x = F.relu(self.conv5(x))
         x = self.pool5(x)
 
         x = x.view(-1, 4096)
 
         x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+
         x = F.relu(self.fc2(x))
+
         mu = F.relu(self.fc21(x))
         logvar = F.relu(self.fc22(x))
 
@@ -309,7 +323,7 @@ class ResNet(nn.Module):
 
 
 def ResNet18():
-    return ResNet(BasicBlock, [2, 2, 2, 2])
+    return ResNet(BasicBlock, [1, 1, 1, 1])
 
 
 def ResNet34():
