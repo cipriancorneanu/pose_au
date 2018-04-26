@@ -59,22 +59,14 @@ def evaluate_model(y_true, y_pred, verbose=True):
             print '\t\tRecall = {}'.format(rec)
 
     # compute average scores
-    print 'Exact Match = {}'.format(accuracy_score(y_true, y_pred))
-    print 'Accuracy = {}'.format(np.mean(accs))
-    print 'Hamming Loss = {}'.format(np.mean(hls))
-    print 'F1 = {}'.format(np.mean(f1s))
-    print 'Precision = {}'.format(np.mean(precs))
-    print 'Recall = {}'.format(np.mean(recs))
+    em, acc, hl, f1, prec, rec = accuracy_score(y_true, y_pred), np.mean(
+        accs), np.mean(hls), np.mean(f1s), np.mean(precs), np.mean(recs)
 
-    # filter exact matches
-    exact_matches = []
-    for sample, sample_hat in zip(y_true, y_pred):
-        if np.array_equal(sample, sample_hat):
-            exact_matches.append(sample_hat)
+    print 'Exact Match = {}'.format(em)
+    print 'Accuracy = {}'.format(acc)
+    print 'Hamming Loss = {}'.format(hl)
+    print 'F1 = {}'.format(f1)
+    print 'Precision = {}'.format(prec)
+    print 'Recall = {}'.format(rec)
 
-    # show some random exact matches
-    '''
-    idxs = random.sample(xrange(0,len(exact_matches)), 100)
-    for x in idxs:
-        print 'Exact match sample: {}'.format(exact_matches[x])
-    '''
+    return em, hl, f1, prec, rec
