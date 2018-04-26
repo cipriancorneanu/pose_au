@@ -70,16 +70,18 @@ def train(epoch):
         data, target = Variable(data).float(), Variable(target).float()
 
         optimizer.zero_grad()
+        print('Before passing it to mode')
         output = model(data)
-        loss = F.binary_cross_entropy(output, target)
+        print('After passing it to model')
+        loss = F.binary_cross_entropy(output, target, size_average=False)
         loss.backward()
         optimizer.step()
 
         if iter % args.log_interval == 0:
             print('Train Epoch: {} [{}/{}]\t\tLoss: {:.6f}'.format(
-                epoch, iter, n_iter, loss.data[0]))
+                epoch, iter, n_iter, loss.data[0] / len(data)))
 
-        mean_loss.append(loss.data.cpu().numpy())
+        mean_loss.append(loss.data[0].cpu().numpy())
 
     print('-----Mean loss in train : {}-----'.format(np.mean(mean_loss)))
 
