@@ -2,40 +2,14 @@ from torch import nn
 from torch.autograd import Variable
 from torch.nn import functional as F
 
+'''
+CNN 
+'''
+
 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=4, stride=2)
-        self.conv2 = nn.Conv2d(64, 64, kernel_size=4, stride=2)
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=4, stride=2)
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=4, stride=2)
-        self.conv5 = nn.Conv2d(256, 256, kernel_size=4, stride=2)
-        self.conv6 = nn.Conv2d(256, 512, kernel_size=4, stride=2)
-        self.fc1 = nn.Linear(512, 1024)
-        self.fc2 = nn.Linear(1024, 1024)
-        self.fc3 = nn.Linear(1024, 10)
-
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
-        x = F.relu(self.conv5(x))
-        x = F.relu(self.conv6(x))
-
-        x = x.view(-1, 512)
-
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = F.sigmoid(self.fc3(x))
-
-        return x
-
-
-class BiggerNet(nn.Module):
-    def __init__(self):
-        super(BiggerNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 96, kernel_size=11, stride=1)
         self.pool1 = nn.MaxPool2d(3)
         self.bn1 = nn.BatchNorm2d(96)
@@ -78,6 +52,12 @@ class BiggerNet(nn.Module):
         x = F.sigmoid(self.fc3(x))
 
         return x
+
+
+''' 
+Implements: 
+Yeh, C. K., Tsai, Y. H. H., & Wang, Y. C. F. (2017). Generative-Discriminative Variational Model for Visual Recognition. arXiv preprint arXiv:1706.02295.
+'''
 
 
 class GDVM(nn.Module):
@@ -151,6 +131,13 @@ class GDVM(nn.Module):
         y = F.sigmoid(self.fc4(y))
 
         return y, mu, logvar
+
+
+'''
+Variational Auto-Encoder
+Implements the following paper:
+Kingma, D. P., & Welling, M. (2013). Auto-encoding variational bayes. arXiv preprint arXiv:1312.6114.
+'''
 
 
 class VAE(nn.Module):
