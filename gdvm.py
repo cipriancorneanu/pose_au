@@ -35,8 +35,8 @@ parser.add_argument("--log_interval", type=int, default=100,
                     help='how many iterations to wait before logging info')
 parser.add_argument("--beta", type=float, default=1,
                     help='how much the KL weights in the final loss')
-parser.add_argument("--divergence", type=float, default=10,
-                    help='how high the KL must be to propagate KL regularization')
+parser.add_argument("--k_beta", type=float, default=1,
+                    help='Adapt how much KL weights in the final loss every epoch : beta = beta + k_beta*beta')
 
 args = parser.parse_args()
 
@@ -53,14 +53,15 @@ tsfm = ToTensor()
 
 dt_train = Fera2017Dataset('/data/data1/datasets/fera2017/',
                            partition='train', tsubs=None, tposes=[1, 6, 7], transform=tsfm)
-dl_train = DataLoader(dt_train, batch_size=64, shuffle=True, num_workers=4)
+dl_train = DataLoader(dt_train, batch_size=args.batch_size,
+                      shuffle=True, num_workers=4)
 
 dl_test, n_iter_test = [], []
 for pose in poses:
     dt_test = Fera2017Dataset('/data/data1/datasets/fera2017/',
                               partition='validation', tsubs=None,  tposes=[pose], transform=tsfm)
     n_iter_test.append(len(dt_test)/args.batch_size)
-    dl_test.append(DataLoader(dt_test, batch_size=64,
+    dl_test.append(DataLoader(dt_test, batch_size=args.batch_size,
                               shuffle=True, num_workers=4))
 
 n_iter_train = len(dt_train)/args.batch_size
@@ -73,13 +74,14 @@ def KLD(mu, logvar):
     return -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
 
-def loss(pred, target, mu, logvar, beta):
-    return F.binary_cross_entropy(pred, target) + args.beta*KLD(mu, logvar)
+def BCE(pred, target):
+    return F.binary_cross_entropy(pred, target, size_average=False)
 
 
-def train(epoch):
+def train(epoch, beta):
     model.train()
     acc_loss = 0
+
     for iter, (data, target, _) in enumerate(dl_train):
         data, target = data.cuda(), target.cuda()
         data, target = Variable(data).float(), Variable(target).float()
@@ -88,27 +90,22 @@ def train(epoch):
         pred, mu, logvar = model(data)
 
         kld = KLD(mu, logvar)
-        bce = F.binary_cross_entropy(pred, target)
-        loss = bce + args.beta*kld
+        bce = BCE(pred, target)
+        loss = bce + beta*kld
+        loss.backward()
 
-        ''' Backpropagate KL regularization just when it's too high'''
-        if kld.data[0] > args.divergence:
-            loss.backward()
-        else:
-            bce.backward()
-
-        acc_loss += loss.data[0]
+        acc_loss += loss.data[0] / len(data)
         optimizer.step()
 
         if iter % args.log_interval == 0:
             print('Train Epoch: {} [{}/{}]\tLoss: {:.4f} + {}*{:.4f} = {:.4f}'.format(
-                epoch, iter, n_iter_train, bce.data[0], args.beta, kld.data[0], loss.data[0]))
+                epoch, iter, n_iter_train, bce.data[0] / len(data), beta, kld.data[0] / len(data), loss.data[0] / len(data)))
 
     print('====> Epoch: {} Average loss: {:.4f}'.format(
         epoch, acc_loss / n_iter_train))
 
 
-def test():
+def test(n_runs, beta):
     model.eval()
     for i, dl_test_pose in enumerate(dl_test):
         acc_loss, targets, preds = 0, [], []
@@ -116,12 +113,19 @@ def test():
             '-----------------------------------Evaluating POSE {} ------------------------- '.format(poses[i]))
         for iter, (data, target, _) in enumerate(dl_test_pose):
             data, target = data.cuda(), target.cuda()
-            data, target = Variable(data).float(), Variable(target).float()
+            data, target = Variable(data, volatile=True).float(
+            ), Variable(target, volatile=True).float()
 
-            pred, mu, logvar = model(data)
+            outputs = [model(data) for run in range(n_runs)]
 
-            acc_loss += loss(pred, target, mu, logvar, args.beta).data[0]
-            preds.append(pred.data.cpu().numpy())
+            for (pred, mu, logvar) in outputs:
+                acc_loss += (BCE(pred, target) + beta *
+                             KLD(mu, logvar)).data[0] / (len(data)*n_runs)
+
+            pred = np.mean(np.asarray([p.data.cpu().numpy()
+                                       for (p, mu, lvar) in outputs]), axis=0)
+
+            preds.append(pred)
             targets.append(target.data.cpu().numpy())
 
         pred = np.asarray(
@@ -135,5 +139,6 @@ def test():
 
 
 for epoch in range(1, args.epochs+1):
-    train(epoch)
-    test()
+    beta = args.beta*(1 + epoch*args.k_beta)
+    train(epoch, beta=beta)
+    test(n_runs=5, beta=beta)
