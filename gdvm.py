@@ -43,7 +43,7 @@ parser.add_argument("--log_interval", type=int, default=100,
                     help='how many iterations to wait before logging info')
 parser.add_argument("--beta", type=float, default=1,
                     help='how much the KL weights in the final loss')
-parser.add_argument("--k_beta", type=float, default=1,
+parser.add_argument("--k_beta", type=float, default=0,
                     help='Adapt how much KL weights in the final loss every epoch : beta = beta + k_beta*beta')
 args = parser.parse_args()
 
@@ -53,26 +53,27 @@ optimizer = optim.Adam(model.parameters(), lr=args.lr)
 poses = [1, 6, 7]
 tsfm = ToTensor()
 
-logger = Logger('./logs/gdvm'+'_beta_'+str(args.beta) +
-                '_kbeta_'+str(args.k_beta))
+oname = 'gdvm_beta_' + str(args.beta) + '_kbeta_' + str(args.k_beta)
+logger = Logger('./logs/'+oname+'/')
 
 dt_train = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                           partition='train', tsubs=['F001'], tposes=[1, 6, 7], transform=tsfm)
+                           partition='train', tsubs=None, tposes=[1, 6, 7], transform=tsfm)
 dl_train = DataLoader(dt_train, batch_size=args.batch_size,
                       shuffle=True, num_workers=4)
 
 dl_test, n_iter_test = [], []
 for pose in poses:
     dt_test = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                              partition='validation', tsubs=['F007'],  tposes=[pose], transform=tsfm)
+                              partition='validation', tsubs=None,  tposes=[pose], transform=tsfm)
     n_iter_test.append(len(dt_test)/args.batch_size)
     dl_test.append(DataLoader(dt_test, batch_size=args.batch_size,
                               shuffle=True, num_workers=4))
 
 n_iter_train = len(dt_train)/args.batch_size
-
+n_iter_test_total = np.sum(n_iter_test)
 print('n_iter in train : {}'.format(n_iter_train))
-print('n_iter in test: {}'.format(n_iter_test))
+print('n_iter in test per pose: {}, total: {}'.format(
+    n_iter_test, n_iter_test_total))
 
 
 def KLD(mu, logvar):
@@ -122,9 +123,9 @@ def train(epoch, beta):
 
 def test(epoch, n_runs, beta):
     model.eval()
-    f1s = []
+    f1s, loss = [], 0
     for i, dl_test_pose in enumerate(dl_test):
-        acc_loss, targets, preds = 0, [], []
+        targets, preds = 0, [], []
         print(
             '-----------------------------------Evaluating POSE {} ------------------------- '.format(poses[i]))
         for iter, (data, target, _) in enumerate(dl_test_pose):
@@ -135,8 +136,8 @@ def test(epoch, n_runs, beta):
             outputs = [model(data) for run in range(n_runs)]
 
             for (pred, mu, logvar) in outputs:
-                acc_loss += (BCE(pred, target) + beta *
-                             KLD(mu, logvar)).data[0] / (len(data)*n_runs*n_iter_test[i])
+                loss += (BCE(pred, target) + beta *
+                         KLD(mu, logvar)).data[0] / (len(data)*n_runs*n_iter_test_total)
 
             pred = np.mean(np.asarray([p.data.cpu().numpy()
                                        for (p, mu, lvar) in outputs]), axis=0)
@@ -153,14 +154,12 @@ def test(epoch, n_runs, beta):
         _, _, pose_f1, _, _ = evaluate_model(target, pred)
         f1s.append(pose_f1)
 
-    acc_loss = acc_loss / len(dl_test)
     f1 = np.mean(f1s)
-    print('\n====> Test loss: {:.4f}\n'.format(acc_loss))
+    print('\n====> Test loss: {:.4f}\n'.format(loss))
     print('\n====> Mean F1: {}\n'.format(f1))
 
-    #============ TensorBoard logging ============#
     info = {
-        'loss_val': acc_loss,
+        'loss_val': loss,
         'f1_val': f1
     }
 
@@ -181,7 +180,7 @@ def test(epoch, n_runs, beta):
         'epoch': epoch,
         'state_dict': model.state_dict(),
         'f1': f1
-    }, is_best, 'models/gdvm_epoch_'+str(epoch))
+    }, is_best, 'models/' + oname + '_epoch_' + str(epoch))
 
 
 for epoch in range(1, args.epochs+1):
