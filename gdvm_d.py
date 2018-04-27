@@ -50,27 +50,25 @@ print(model)
 
 model.cuda()
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
-poses = [1, 6, 7]
 tsfm = ToTensor()
 
 ''' If just quick test reduce the training/test subjcets and poses to minimum '''
 (t_subs_tr, t_subs_te) = (['F001'], ['F007']
                           ) if args.quick_test else (None, None)
-(t_poses_tr, t_poses_te) = (
-    [6], [6]) if args.quick_test else ([1, 6, 7], [1, 6, 7])
+poses = ([6]) if args.quick_test else [1, 6, 7]
 
 oname = 'gdvm_d'
 logger = Logger('./logs/'+oname+'/')
 
 dt_train = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                           partition='train', tsubs=t_subs_tr, tposes=t_poses_tr, transform=tsfm)
+                           partition='train', tsubs=t_subs_tr, tposes=poses, transform=tsfm)
 dl_train = DataLoader(dt_train, batch_size=args.batch_size,
                       shuffle=True, num_workers=4)
 
 dl_test, n_iter_test = [], []
 for pose in poses:
     dt_test = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                              partition='validation', tsubs=t_subs_te,  tposes=t_poses_te, transform=tsfm)
+                              partition='validation', tsubs=t_subs_te,  tposes=[pose], transform=tsfm)
     n_iter_test.append(len(dt_test)/args.batch_size)
     dl_test.append(DataLoader(dt_test, batch_size=args.batch_size,
                               shuffle=True, num_workers=4))
@@ -188,4 +186,4 @@ def test(epoch, n_runs):
 
 for epoch in range(1, args.epochs+1):
     train(epoch)
-    test(epoch, n_runs=5)
+    test(epoch, n_runs=1)
