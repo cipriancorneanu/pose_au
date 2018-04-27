@@ -1,6 +1,7 @@
 *~
 *pyc
 *sh
+nohup.out
 outputs/*
 results/*
 facepp/*
