@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 from torch.autograd import Variable
 from torch.nn import functional as F
@@ -128,9 +129,31 @@ class GDVM(nn.Module):
         z = self.reparameterize(mu, logvar)
 
         y = F.relu(self.fc3(z))
+        y = self.dropout(y)
         y = F.sigmoid(self.fc4(y))
 
         return y, mu, logvar
+
+
+'''
+Same as GDVM but without reparameterization. Purely discriminative. 
+'''
+
+
+class GDVM_D(GDVM):
+    def __init__(self):
+        super(GDVM_D, self).__init__()
+        self.fc3 = nn.Linear(128, 512)
+
+    def forward(self, x):
+        mu, logvar = self.encode(x)
+        z = torch.cat((mu, logvar), 1)
+
+        y = F.relu(self.fc3(z))
+        y = self.dropout(y)
+        y = F.sigmoid(self.fc4(y))
+
+        return y
 
 
 '''
