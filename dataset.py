@@ -108,7 +108,7 @@ class Fera2017DatasetTriplet(Dataset):
         self.subjects = tsubs if tsubs else self.hf[self.partition_key].keys()
         self.poses = tposes if tposes else range(self.n_poses)
         self.dataset_idx = self.get_dataset_idx()
-        self.idx_pn = self.get_idx_pn()
+        self.idx_pn = self.get_idx_pn(verbose)
         self.transform = transform
 
     def get_dataset_idx(self):
@@ -121,13 +121,18 @@ class Fera2017DatasetTriplet(Dataset):
                     key = self.partition_key+'/'+sub+'/'+task+'/'+str(pose)
 
                     if key in self.hf:
-                        n = self.hf[key]['faces'].shape[0]
-                        map[key] = {'idx': np.arange(offset, offset+n),
-                                    'aus': np.array(self.hf[key]['aus'])}
+                        aus = np.array(self.hf[key]['aus'])
+                        aus = aus[np.where(aus.any(axis=1))[0]]
+                        n = aus.shape[0]
 
-                        ''' 
-                        TODO: filter out neutral faces 
+                        print(np.array(self.hf[key]['aus'].shape), n)
+
                         '''
+                        PROBLEM HERE with the indexing
+                        '''
+
+                        map[key] = {'idx': np.arange(offset, offset+n),
+                                    'aus': aus}
 
                         if self.verbose:
                             print('{}: ({}, {}), {}'.format(
@@ -137,15 +142,9 @@ class Fera2017DatasetTriplet(Dataset):
 
         return map
 
-    def get_idx_pn(self):
-        '''
-        TODO: 
-        1. A postive should be the same sample from different pose
-        2. A negative should any other sample with pivot class deactivated
-        3. Filter out neutral faces. 
-        '''
-
+    def get_idx_pn(self, verbose=False):
         ''' For every sample in the dataset find a positive and a negative (a, p, n)'''
+
         map = []
         for x_a in np.arange(len(self)):
             if x_a % 100 == 0:
@@ -162,10 +161,10 @@ class Fera2017DatasetTriplet(Dataset):
                     0, len(active_classes))]
 
                 ''' Get positive '''
-                x_p = self.get_positive(x_a, pivot_class)
+                x_p = self.get_positive(x_a, pivot_class, verbose=False)
 
                 ''' Get negative '''
-                x_n = self.get_negative(x_a, pivot_class)
+                x_n = self.get_negative(x_a, pivot_class, verbose=False)
 
             else:
                 print('No active class. Return anchor as postive and negative')
@@ -194,41 +193,53 @@ class Fera2017DatasetTriplet(Dataset):
         if verbose:
             print('key positive :{}'.format(key_p))
 
-        ''' Get all samples from same subject but different pose '''
-        pool = np.array(self.hf[key_p]['aus'])
+        ''' Get same samples from same subject but different pose '''
+        ridx_p = ridx_a
+        idx_p = self.dataset_idx[key_p]['idx'][0] + ridx_p
+
+        if verbose:
+            print('key_p: {}, idx_p: {}'.format(key_p, idx_p))
+
+        return idx_p
+
+    def get_negative(self, idx_a, pivot, verbose=False):
+        '''
+        TODO: deal with the case when no negative is located in same sequence!
+        '''
+        _, y_a, key_a, ridx_a = self.get(idx_a)
+        if verbose:
+            print('---------------------')
+            print('key: {}, idx_a: {}, ridx_a:{}, pivot: {}'.format(
+                key_a, idx_a, ridx_a, pivot))
+
+        ''' Get all samples from same subject and same pose'''
+        pool = np.array(self.hf[key_a]['aus'])
 
         if verbose:
             print('All samples: {}'.format(pool.shape))
 
-        ''' Filter from these samples all that have active pivot '''
+        ''' Filter from these samples all that have pivot non-active '''
         if(pool.size > 0):
-            ridxs_p = np.where(pool[:, pivot] == 1)[0]
+            ridxs_n = np.where(pool[:, pivot] == 0)[0]
 
-            if ridxs_p.size > 0:
+            if ridxs_n.size > 0:
                 if verbose:
-                    print('Filtered samples: {}'.format(pool[ridxs_p].shape))
+                    print('Pool of potential negatives: {}'.format(
+                        pool[ridxs_n].shape))
 
                 ''' Randomply pick one '''
-                ridx_p = np.random.choice(np.squeeze(ridxs_p))
+                ridx_n = np.random.choice(np.squeeze(ridxs_n))
 
                 if verbose:
-                    print('ridx_p: {}'.format(ridx_p))
+                    print('ridx_n: {}'.format(ridx_n))
 
-                idx_p = self.dataset_idx[key_p]['idx'][0] + ridx_p
+                idx_n = self.dataset_idx[key_a]['idx'][0] + ridx_n
 
                 if verbose:
-                    print('key_p: {}, idx_p: {}'.format(key_p, idx_p))
+                    print('key_n: {}, idx_n: {}'.format(key_a, idx_n))
             else:
-                print('No positive found. Return anchor')
-                idx_p = idx_a
-        else:
-            print('No positive found. Return anchor')
-            idx_p = idx_a
-
-        return idx_p
-
-    def get_negative(self, idx, pivot):
-        idx_n = idx
+                print('No negatives found. Return anchor.')
+                idx_n = idx_a
 
         return idx_n
 
@@ -280,7 +291,7 @@ if __name__ == '__main__':
     tsfm = ToTensor()
     dt_tr = Fera2017DatasetTriplet('/data/data1/datasets/fera2017/',
                                    partition='train', tsubs=['F001', 'F002'],
-                                   tposes=[1, 6, 7], transform=tsfm, verbose=False)
+                                   tposes=[1, 6, 7], transform=tsfm, verbose=True)
 
     for i in range(0, len(dt_tr), 100):
         t = dt_tr[i]
