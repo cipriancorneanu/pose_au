@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from facepp.reader.reader import read_csv
 import h5py
-import skimage.transform
+import random
 
 
 class Fera2017Dataset(Dataset):
@@ -125,6 +125,10 @@ class Fera2017DatasetTriplet(Dataset):
                         map[key] = {'idx': np.arange(offset, offset+n),
                                     'aus': np.array(self.hf[key]['aus'])}
 
+                        ''' 
+                        TODO: filter out neutral faces 
+                        '''
+
                         if self.verbose:
                             print('{}: ({}, {}), {}'.format(
                                 sub+'/'+task+'/'+str(pose), offset, offset+n, n))
@@ -134,23 +138,104 @@ class Fera2017DatasetTriplet(Dataset):
         return map
 
     def get_idx_pn(self):
-        ''' For every sample in the dataset find a positive and a negative (a, p, n)'''
+        '''
+        TODO: 
+        1. A postive should be the same sample from different pose
+        2. A negative should any other sample with pivot class deactivated
+        3. Filter out neutral faces. 
+        '''
 
-        ''' Create triplet'''
-        '''
-        the requested idx is the anchor
-        2. Get active classes from anchor
-        3. Randmly picl one of the active classes
-        4. Find POSITIVE: Find sample from same subject but DIFFERENT pose same active class.
-        4.1 What if I don't find?
-        5. Fing NEGATIVE: Any sample where this class is not active. 
-        '''
-        return [(x, x) for x in np.arange(len(self))]
+        ''' For every sample in the dataset find a positive and a negative (a, p, n)'''
+        map = []
+        for x_a in np.arange(len(self)):
+            if x_a % 100 == 0:
+                print(x_a)
+
+            _, y_a, _, _ = self.get(x_a)
+
+            ''' Get active classes from anchor '''
+            active_classes = np.where(y_a == 1)[0]
+
+            ''' Randomly pick pivot class from one of the active classes '''
+            if len(active_classes) > 0:
+                pivot_class = active_classes[np.random.randint(
+                    0, len(active_classes))]
+
+                ''' Get positive '''
+                x_p = self.get_positive(x_a, pivot_class)
+
+                ''' Get negative '''
+                x_n = self.get_negative(x_a, pivot_class)
+
+            else:
+                print('No active class. Return anchor as postive and negative')
+                x_p, x_n = x_a, x_a
+
+            map.append((x_p, x_n))
+
+        return map
+
+    def get_positive(self, idx_a, pivot, verbose=False):
+        _, y_a, key_a, ridx_a = self.get(idx_a)
+        if verbose:
+            print('---------------------')
+            print('key: {}, idx_a: {}, ridx_a:{}, pivot: {}'.format(
+                key_a, idx_a, ridx_a, pivot))
+
+        ''' Get different pose '''
+        root_a, pose_a = key_a[:-1],  int(key_a.split('/')[3])
+
+        if verbose:
+            print('pose anchor: {}'.format(pose_a))
+
+        pose_p = random.choice(list(set(self.poses) - set([pose_a])))
+        key_p = root_a + str(pose_p)
+
+        if verbose:
+            print('key positive :{}'.format(key_p))
+
+        ''' Get all samples from same subject but different pose '''
+        pool = np.array(self.hf[key_p]['aus'])
+
+        if verbose:
+            print('All samples: {}'.format(pool.shape))
+
+        ''' Filter from these samples all that have active pivot '''
+        if(pool.size > 0):
+            ridxs_p = np.where(pool[:, pivot] == 1)[0]
+
+            if ridxs_p.size > 0:
+                if verbose:
+                    print('Filtered samples: {}'.format(pool[ridxs_p].shape))
+
+                ''' Randomply pick one '''
+                ridx_p = np.random.choice(np.squeeze(ridxs_p))
+
+                if verbose:
+                    print('ridx_p: {}'.format(ridx_p))
+
+                idx_p = self.dataset_idx[key_p]['idx'][0] + ridx_p
+
+                if verbose:
+                    print('key_p: {}, idx_p: {}'.format(key_p, idx_p))
+            else:
+                print('No positive found. Return anchor')
+                idx_p = idx_a
+        else:
+            print('No positive found. Return anchor')
+            idx_p = idx_a
+
+        return idx_p
+
+    def get_negative(self, idx, pivot):
+        idx_n = idx
+
+        return idx_n
 
     def __len__(self):
         return np.sum([v['idx'].size for v in self.dataset_idx.itervalues()])
 
-    def f(self, idx):
+    def get(self, idx):
         for k, v in self.dataset_idx.iteritems():
             if idx >= v['idx'].min() and idx <= v['idx'].max():
                 key, i = k, idx-v['idx'].min()
@@ -158,15 +243,15 @@ class Fera2017DatasetTriplet(Dataset):
         x = self.hf[key]['faces'][i]
         y = self.hf[key]['aus'][i]
 
-        return x, y
+        return x, y, key, i
 
     def __getitem__(self, idx):
         idx_p, idx_n = self.idx_pn[idx]
 
-        tr = [self.f(x) for x in [idx, idx_p, idx_n]]
+        tr = [self.get(x) for x in [idx, idx_p, idx_n]]
 
         if self.transform:
-            t_tr = [self.transform((x, y)) for x, y in tr]
+            t_tr = [self.transform((x, y)) for x, y, _, _ in tr]
 
         return {'a': {'x': t_tr[0][0], 'y': t_tr[0][1]},
                 'p': {'x': t_tr[1][0], 'y': t_tr[1][1]},
@@ -194,7 +279,8 @@ class ToTensor(object):
 if __name__ == '__main__':
     tsfm = ToTensor()
     dt_tr = Fera2017DatasetTriplet('/data/data1/datasets/fera2017/',
-                                   partition='train', tsubs=None, tposes=None, transform=tsfm, verbose=False)
+                                   partition='train', tsubs=['F001', 'F002'],
+                                   tposes=[1, 6, 7], transform=tsfm, verbose=False)
 
     for i in range(0, len(dt_tr), 100):
         t = dt_tr[i]
