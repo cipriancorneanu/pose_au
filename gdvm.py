@@ -125,7 +125,7 @@ def test(epoch, n_runs, beta):
     model.eval()
     f1s, loss = [], 0
     for i, dl_test_pose in enumerate(dl_test):
-        targets, preds = 0, [], []
+        targets, preds = [], []
         print(
             '-----------------------------------Evaluating POSE {} ------------------------- '.format(poses[i]))
         for iter, (data, target, _) in enumerate(dl_test_pose):
