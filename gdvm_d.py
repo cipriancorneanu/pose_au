@@ -41,11 +41,13 @@ parser.add_argument("--size_latent", type=int, default=20,
                     help='size of latent representation')
 parser.add_argument("--log_interval", type=int, default=100,
                     help='how many iterations to wait before logging info')
+parser.add_argument("--dropout", type=float, default=0.2,
+                    help='Dropout probability')
 parser.add_argument("--quick_test", type=bool, default=False,
                     help='If true, train and test just on one subject.')
 args = parser.parse_args()
 
-model = GDVM_D()
+model = GDVM_D(args.dropout)
 print(model)
 
 model.cuda()
@@ -57,7 +59,7 @@ tsfm = ToTensor()
                           ) if args.quick_test else (None, None)
 poses = ([6]) if args.quick_test else [1, 6, 7]
 
-oname = 'gdvm_d'
+oname = 'gdvm_d_'+'dropout_'+str(args.dropout)
 logger = Logger('./logs/'+oname+'/')
 
 dt_train = Fera2017Dataset('/data/data1/datasets/fera2017/',

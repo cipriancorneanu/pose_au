@@ -48,7 +48,9 @@ parser.add_argument("--k_beta", type=float, default=0,
 args = parser.parse_args()
 
 model = GDVM()
+print(model)
 model.cuda()
+
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 poses = [1, 6, 7]
 tsfm = ToTensor()

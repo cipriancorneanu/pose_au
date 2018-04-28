@@ -62,7 +62,7 @@ Yeh, C. K., Tsai, Y. H. H., & Wang, Y. C. F. (2017). Generative-Discriminative V
 
 
 class GDVM(nn.Module):
-    def __init__(self):
+    def __init__(self, dropout=0.2):
         super(GDVM, self).__init__()
         self.conv1 = nn.Conv2d(3, 96, kernel_size=11, stride=1)
         self.pool1 = nn.MaxPool2d(3)
@@ -84,7 +84,7 @@ class GDVM(nn.Module):
         self.fc22 = nn.Linear(512, 64)
         self.fc3 = nn.Linear(64, 512)
         self.fc4 = nn.Linear(512, 10)
-        self.dropout = nn.Dropout2d(0.2)
+        self.dropout = nn.Dropout2d(dropout)
 
     def encode(self, x):
         x = F.relu(self.conv1(x))
@@ -141,14 +141,11 @@ Same as GDVM but without reparameterization. Purely discriminative.
 
 
 class GDVM_D(GDVM):
-    def __init__(self):
-        super(GDVM_D, self).__init__()
-        self.fc3 = nn.Linear(128, 512)
+    def __init__(self, dropout):
+        super(GDVM_D, self).__init__(dropout=dropout)
 
     def forward(self, x):
-        mu, logvar = self.encode(x)
-        z = torch.cat((mu, logvar), 1)
-
+        z, _ = self.encode(x)
         y = F.relu(self.fc3(z))
         y = self.dropout(y)
         y = F.sigmoid(self.fc4(y))
