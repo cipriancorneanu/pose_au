@@ -7,7 +7,6 @@ import numpy as np
 
 def evaluate_model(y_true, y_pred, verbose=True):
     n_classes = y_true.shape[1]
-    print n_classes
 
     # show some predictions
     idxs = random.sample(xrange(0, len(y_true)), 100)
@@ -62,11 +61,12 @@ def evaluate_model(y_true, y_pred, verbose=True):
     em, acc, hl, f1, prec, rec = accuracy_score(y_true, y_pred), np.mean(
         accs), np.mean(hls), np.mean(f1s), np.mean(precs), np.mean(recs)
 
-    print 'Exact Match = {}'.format(em)
-    print 'Accuracy = {}'.format(acc)
-    print 'Hamming Loss = {}'.format(hl)
-    print 'F1 = {}'.format(f1)
-    print 'Precision = {}'.format(prec)
-    print 'Recall = {}'.format(rec)
+    if verbose:
+        print 'Exact Match = {}'.format(em)
+        print 'Accuracy = {}'.format(acc)
+        print 'Hamming Loss = {}'.format(hl)
+        print 'F1 = {}'.format(f1)
+        print 'Precision = {}'.format(prec)
+        print 'Recall = {}'.format(rec)
 
     return em, hl, f1, prec, rec
