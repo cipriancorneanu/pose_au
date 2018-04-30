@@ -45,6 +45,8 @@ parser.add_argument("--beta", type=float, default=1,
                     help='how much the KL weights in the final loss')
 parser.add_argument("--k_beta", type=float, default=0,
                     help='Adapt how much KL weights in the final loss every epoch : beta = beta + k_beta*beta')
+parser.add_argument("--quick_test", type=bool, default=False,
+                    help='For quick testing use just one subject and pose.')
 args = parser.parse_args()
 
 model = GDVM()
@@ -53,20 +55,27 @@ model.cuda()
 
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 poses = [1, 6, 7]
+n_classes = 10
+eval_thresholds = np.arange(0.05, 1, 0.05)
 tsfm = ToTensor()
 
-oname = 'gdvm_beta_' + str(args.beta) + '_kbeta_' + str(args.k_beta)
-logger = Logger('./logs/'+oname+'/')
+oname = 'gdvm_beta_alr_' + str(args.beta) + \
+    '_kbeta_' + str(args.k_beta) + '_lr_' + str(args.lr)
+
+''' If just quick test reduce the training/test subjcets and poses to minimum '''
+(t_subs_tr, t_subs_te) = (['F001'], ['F007']
+                          ) if args.quick_test else (None, None)
+poses = ([6]) if args.quick_test else [1, 6, 7]
 
 dt_train = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                           partition='train', tsubs=None, tposes=[1, 6, 7], transform=tsfm)
+                           partition='train', tsubs=t_subs_tr, tposes=poses, transform=tsfm)
 dl_train = DataLoader(dt_train, batch_size=args.batch_size,
                       shuffle=True, num_workers=4)
 
 dl_test, n_iter_test = [], []
 for pose in poses:
     dt_test = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                              partition='validation', tsubs=None,  tposes=[pose], transform=tsfm)
+                              partition='validation', tsubs=t_subs_te,  tposes=[pose], transform=tsfm)
     n_iter_test.append(len(dt_test)/args.batch_size)
     dl_test.append(DataLoader(dt_test, batch_size=args.batch_size,
                               shuffle=True, num_workers=4))
@@ -84,6 +93,9 @@ def KLD(mu, logvar):
 
 def BCE(pred, target):
     return F.binary_cross_entropy(pred, target, size_average=False)
+
+
+logger = Logger('./logs/'+oname+'/')
 
 
 def train(epoch, beta):
@@ -147,26 +159,45 @@ def test(epoch, n_runs, beta):
             preds.append(pred)
             targets.append(target.data.cpu().numpy())
 
-        pred = np.asarray(
-            np.clip(np.rint(np.concatenate(preds)), 0, 1), dtype=np.uint8)
-        target = np.clip(np.rint(np.concatenate(targets)),
-                         0, 1).astype(np.uint8)
+        preds = np.asarray(np.concatenate(preds))
+        targets = np.clip(np.rint(np.concatenate(targets)),
+                          0, 1).astype(np.uint8)
 
         ''' Evaluate model per pose'''
-        _, _, pose_f1, _, _ = evaluate_model(target, pred)
-        f1s.append(pose_f1)
+        f1_pose = []
+        for t in eval_thresholds:
+            preds_f = np.copy(preds)
+            preds_f[np.where(preds_f < t)] = 0
+            preds_f[np.where(preds_f >= t)] = 1
 
-    f1 = np.mean(f1s)
+            preds_f = np.reshape(preds_f, (-1, n_classes))
+
+            print('--------EVAL PRED------ t = {}'.format(t))
+            _, _, f1, _, _ = evaluate_model(targets, preds_f, verbose=False)
+            f1_pose.append(f1)
+
+        f1s.append(f1_pose)
+
+    f1s = np.mean(f1s, axis=0)
     print('\n====> Test loss: {:.4f}\n'.format(loss))
-    print('\n====> Mean F1: {}\n'.format(f1))
+    print('\n====> Mean F1: {}\n'.format(f1s))
 
     info = {
         'loss_val': loss,
-        'f1_val': f1
     }
 
     for tag, value in info.items():
         logger.scalar_summary(tag, value, epoch)
+
+    ''' Print F1 per threshold'''
+
+    for i, t in enumerate(eval_thresholds):
+        info = {
+            'f1_val_t_'+str(t): f1s[i]
+        }
+
+        for tag, value in info.items():
+            logger.scalar_summary(tag, value, epoch)
 
     # Get bool not ByteTensor
     is_best = True
@@ -185,7 +216,10 @@ def test(epoch, n_runs, beta):
     }, is_best, 'models/' + oname + '_epoch_' + str(epoch))
 
 
+scheduler = optim.lr_scheduler.MultiStepLR(
+    optimizer, milestones=range(4, args.epochs), gamma=0.2)
 for epoch in range(1, args.epochs+1):
+    scheduler.step()
     beta = args.beta*(1 + epoch*args.k_beta)
     train(epoch, beta=beta)
-    test(epoch, n_runs=5, beta=beta)
+    test(epoch, n_runs=10, beta=beta)
