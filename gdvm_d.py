@@ -59,7 +59,7 @@ tsfm = ToTensor()
                           ) if args.quick_test else (None, None)
 poses = ([6]) if args.quick_test else [1, 6, 7]
 
-oname = 'gdvm_d_'+'dropout_'+str(args.dropout)
+oname = 'gdvm_d_'+'dropout_'+str(args.dropout)+'_lr_'+str(args.lr)
 logger = Logger('./logs/'+oname+'/')
 
 dt_train = Fera2017Dataset('/data/data1/datasets/fera2017/',
