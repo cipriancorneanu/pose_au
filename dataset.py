@@ -289,6 +289,7 @@ class ToTensor(object):
 
 if __name__ == '__main__':
     tsfm = ToTensor()
+    '''
     dt_tr = Fera2017DatasetTriplet('/data/data1/datasets/fera2017/',
                                    partition='train', tsubs=['F001', 'F002'],
                                    tposes=[1, 6, 7], transform=tsfm, verbose=True)
@@ -297,12 +298,13 @@ if __name__ == '__main__':
         t = dt_tr[i]
         print('i:{},  a_y:{}, p_y:{}, n_y:{}'.format(
             i, t['a']['y'].numpy(), t['p']['y'].numpy(), t['n']['y'].numpy()))
-
     '''
+    dt_tr = Fera2017Dataset('/data/data1/datasets/fera2017/',
+                            partition='train', tsubs=None, tposes=None, transform=tsfm, verbose=True)
+
     print('----------------')
     dt_val = Fera2017Dataset('/data/data1/datasets/fera2017/',
-                             partition='validation', tsubs=None, tposes=[1, 6, 7], transform=tsfm, verbose=True)
-    '''
+                             partition='validation', tsubs=None, tposes=None, transform=tsfm, verbose=True)
     '''
     dl_tr = DataLoader(dt_tr, batch_size=64, shuffle=True, num_workers=4)
     dl_val = DataLoader(dt_val, batch_size=64, shuffle=True, num_workers=4)
