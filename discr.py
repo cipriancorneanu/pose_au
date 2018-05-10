@@ -10,7 +10,7 @@ from eval import evaluate_model
 import numpy as np
 import os
 from dataset import Fera2017Dataset, ToTensor
-from topologies import Net, BiggerNet
+from topologies import Net
 
 parser = argparse.ArgumentParser(description='Patch classifier for DSIN.')
 parser.add_argument("--path", default='/data/data1/datasets/fera2017/',
@@ -35,7 +35,9 @@ prefix, oname = 'no_weighting_', os.path.basename(__file__).split('.')[0] + '_' 
                 str(args.n_folds) + 'folds_tf_' + \
     str(args.test_fold) + '_' + args.patch
 
-model = BiggerNet()
+model = Net()
+n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(n_params)
 model.cuda()
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
