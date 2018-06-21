@@ -22,14 +22,8 @@ def evaluate_model(y_true, y_pred, verbose=True):
                   '10', '12', '14', '15', '17', '23', '24']
     elif n_classes == 10:
         au_map = ['01', '04', '06', '07', '10', '12', '14', '15', '17', '24']
-    elif n_classes == 7:
-        au_map = ['10', '12', '14', '15', '17', '23', '24']
-    elif n_classes == 5:
-        au_map = ['01', '02', '04', '06', '07']
-    elif n_classes == 3:
-        au_map = ['', '', '']
-    elif n_classes == 1:
-        au_map = ['']
+    else:
+        au_map = ['']*y_true.shape[1]
 
     for au in range(n_classes):
         if verbose:
